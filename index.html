@@ -314,6 +314,127 @@
     }
     .leg-k { color: var(--gold); font-weight: bold; }
 
+    /* ── Track history panel ─────────────────────────────── */
+    .track-panel {
+      margin-top: 14px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid var(--gold-dim);
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+    .track-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .track-panel-header h3 {
+      font-size: .88em;
+      color: var(--gold);
+      margin: 0;
+    }
+    .track-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-like {
+      background: transparent;
+      border: 1px solid #c0392b;
+      border-radius: 14px;
+      color: #e74c3c;
+      font-size: .88em;
+      padding: 3px 12px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .btn-like:hover, .btn-like.liked { background: #c0392b; color: #fff; }
+    .btn-clear-track {
+      background: transparent;
+      border: 1px solid #555;
+      border-radius: 14px;
+      color: #aaa;
+      font-size: .88em;
+      padding: 3px 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-clear-track:hover { background: rgba(255,255,255,.08); }
+    .track-notes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-height: 34px;
+      align-items: flex-start;
+    }
+    .track-note-chip {
+      background: rgba(255,215,0,.1);
+      border: 1px solid var(--gold-dim);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: .75em;
+      font-family: 'Courier New', monospace;
+      color: var(--gold);
+      white-space: nowrap;
+    }
+    .track-empty-msg {
+      color: #666;
+      font-size: .8em;
+      font-style: italic;
+      align-self: center;
+    }
+    /* ── Liked tracks list ───────────────────────────────── */
+    .liked-section {
+      margin-top: 10px;
+      border-top: 1px solid rgba(255,215,0,.15);
+      padding-top: 10px;
+    }
+    .liked-section h4 {
+      font-size: .82em;
+      color: var(--gold-dim);
+      margin-bottom: 6px;
+    }
+    .liked-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .liked-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,215,0,.06);
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 5px 10px;
+    }
+    .liked-item-label {
+      font-size: .75em;
+      color: #aaa;
+      white-space: nowrap;
+    }
+    .liked-item-notes {
+      flex: 1;
+      font-size: .75em;
+      font-family: 'Courier New', monospace;
+      color: var(--gold);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .liked-item-remove {
+      background: transparent;
+      border: none;
+      color: #555;
+      cursor: pointer;
+      font-size: .9em;
+      padding: 0 2px;
+      line-height: 1;
+      transition: color .15s;
+    }
+    .liked-item-remove:hover { color: #e74c3c; }
+
     /* ── Footer ──────────────────────────────────────────── */
     footer {
       margin-top: 12px;
@@ -381,6 +502,24 @@
   <div class="info">
     <h3>⌨️ Key Map &nbsp;(white keys → QWERTY/ZXCV rows &nbsp;|&nbsp; black keys → S D G H J / 2 3 5 6 7 9 0)</h3>
     <div class="legend" id="legend"></div>
+  </div>
+
+  <!-- Track history & Like -->
+  <div class="track-panel">
+    <div class="track-panel-header">
+      <h3>🎼 Typed Track</h3>
+      <div class="track-actions">
+        <button class="btn-like" id="btnLike">❤️ Like</button>
+        <button class="btn-clear-track" id="btnClearTrack">✕ Clear</button>
+      </div>
+    </div>
+    <div class="track-notes" id="trackNotes">
+      <span class="track-empty-msg" id="trackEmptyMsg">Play notes via keyboard to track them here…</span>
+    </div>
+    <div class="liked-section" id="likedSection" style="display:none">
+      <h4>❤️ Liked Tracks</h4>
+      <div class="liked-list" id="likedList"></div>
+    </div>
   </div>
 
 </div>
@@ -748,6 +887,117 @@ buildLegend();
 ['touchstart','mousedown','keydown'].forEach(evt =>
   document.addEventListener(evt, initAudio, { once: true })
 );
+
+/* ───────────────────────────────────────────────
+   KEYBOARD TYPING TRACKER
+─────────────────────────────────────────────── */
+const typedTrack = [];   // { sargam, note, oct } objects in play order
+let likedTracks  = [];   // array of saved track note-arrays
+
+function appendTrackNote(nd) {
+  typedTrack.push({ sargam: SARGAM[nd.note], note: nd.note, oct: nd.oct });
+  renderTrack();
+}
+
+function renderTrack() {
+  const container = document.getElementById('trackNotes');
+  const emptyMsg  = document.getElementById('trackEmptyMsg');
+
+  if (typedTrack.length === 0) {
+    container.innerHTML = '';
+    container.appendChild(emptyMsg);
+    emptyMsg.style.display = '';
+    return;
+  }
+
+  emptyMsg.style.display = 'none';
+  // Rebuild chips
+  container.innerHTML = '';
+  typedTrack.forEach(n => {
+    const chip = document.createElement('span');
+    chip.className = 'track-note-chip';
+    chip.textContent = n.sargam;
+    chip.title = `${n.note}${n.oct}`;
+    container.appendChild(chip);
+  });
+}
+
+document.getElementById('btnClearTrack').addEventListener('click', () => {
+  typedTrack.length = 0;
+  renderTrack();
+  document.getElementById('btnLike').classList.remove('liked');
+});
+
+/* ───────────────────────────────────────────────
+   LIKE / HEART FEATURE
+─────────────────────────────────────────────── */
+document.getElementById('btnLike').addEventListener('click', () => {
+  if (typedTrack.length === 0) return;
+
+  const btn = document.getElementById('btnLike');
+  btn.classList.add('liked');
+
+  const saved = typedTrack.map(n => ({ ...n }));
+  likedTracks.push(saved);
+  renderLikedTracks();
+
+  // Reset after saving
+  typedTrack.length = 0;
+  renderTrack();
+  setTimeout(() => btn.classList.remove('liked'), 800);
+});
+
+function renderLikedTracks() {
+  const section  = document.getElementById('likedSection');
+  const listEl   = document.getElementById('likedList');
+
+  if (likedTracks.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = '';
+  listEl.innerHTML = '';
+
+  likedTracks.forEach((track, idx) => {
+    const item = document.createElement('div');
+    item.className = 'liked-item';
+
+    const label = document.createElement('span');
+    label.className = 'liked-item-label';
+    label.textContent = `#${idx + 1}`;
+
+    const notes = document.createElement('span');
+    notes.className = 'liked-item-notes';
+    notes.textContent = track.map(n => n.sargam).join(' · ');
+    notes.title = track.map(n => `${n.note}${n.oct}`).join(' ');
+
+    const remove = document.createElement('button');
+    remove.className = 'liked-item-remove';
+    remove.textContent = '✕';
+    remove.title = 'Remove';
+    remove.addEventListener('click', () => {
+      const currentIdx = likedTracks.indexOf(track);
+      if (currentIdx !== -1) likedTracks.splice(currentIdx, 1);
+      renderLikedTracks();
+    });
+
+    item.appendChild(label);
+    item.appendChild(notes);
+    item.appendChild(remove);
+    listEl.appendChild(item);
+  });
+}
+
+// Hook into keydown to record keyboard-typed notes
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  const k  = e.key.toUpperCase();
+  const nd = KEY_MAP[k];
+  if (nd) appendTrackNote(nd);
+}, true);
 </script>
 </body>
 </html>
